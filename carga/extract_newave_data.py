@@ -157,12 +157,12 @@ def main():
         description='Extrai dados de MWmed e CAdic dos arquivos NEWAVE',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Exemplos:
-  %(prog)s                    # Extrai dados de 2025, mostra meses 6-10
-  %(prog)s 2026                # Extrai dados de 2026, mostra meses 6-10
-  %(prog)s 2026 --mes 6        # Extrai apenas mês 6 (junho) de 2026
-  %(prog)s 2025 --mes 11       # Extrai apenas mês 11 (novembro) de 2025
-  %(prog)s 2026 --todos-meses  # Extrai todos os meses disponíveis de 2026
+            Exemplos:
+            %(prog)s                    # Extrai dados de 2025, mostra meses 6-10
+            %(prog)s 2026                # Extrai dados de 2026, mostra meses 6-10
+            %(prog)s 2026 --mes 6        # Extrai apenas mês 6 (junho) de 2026
+            %(prog)s 2025 --mes 11       # Extrai apenas mês 11 (novembro) de 2025
+            %(prog)s 2026 --todos-meses  # Extrai todos os meses disponíveis de 2026
         """
     )
     parser.add_argument(
@@ -206,7 +206,7 @@ Exemplos:
     if args.zip:
         zip_path = Path(args.zip)
     else:
-        zip_path = Path(__file__).parent.parent / "deck_newave_2025_11.zip"
+        zip_path = Path(__file__).parent.parent / "deck_newave_2025_12.zip"
     
     if not zip_path.exists():
         print(f"❌ Erro: Arquivo {zip_path} não encontrado!")

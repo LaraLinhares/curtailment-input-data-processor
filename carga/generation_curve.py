@@ -5,31 +5,24 @@ import unicodedata
 import numpy as np
 import pandas as pd
 
+import parse_sistema_dat
+import parse_cadic_dat
 
-### 1 ### Entrada da Curva Típica
+# Ano de geração da curva
+ano = 2027
+
 # Leitura do arquivo CSV de Carga PU
-df_anual = pd.read_csv("outputs/curva_tipica_mensal_pu_carga.csv", sep=';', decimal=',')
+df_anual = pd.read_csv("carga/outputs/curva_tipica_mensal_pu_carga.csv", sep=';', decimal=',')
 
-## Newave data for 2026
-MWmed_dict = {
-    "SE": {1: 46187, 2: 46404, 3: 47303, 4: 45187, 5: 43433, 6: 41985, 7: 41585, 8: 42082, 9: 44335, 10: 44797, 11: 44398, 12: 44320},
-    "S":  {1: 14210, 2: 14597, 3: 14036, 4: 13226, 5: 12688, 6: 12802, 7: 12871, 8: 12672, 9: 12602, 10: 12883, 11: 13427, 12: 13517},
-    "NE": {1: 12913, 2: 13001, 3: 12868, 4: 12755, 5: 12582, 6: 12110, 7: 12088, 8: 12314, 9: 12693, 10: 13318, 11: 13316, 12: 13146},
-    "N":  {1:  7479, 2:  7753, 3:  7817, 4:  7960, 5:  8028, 6:  7985, 7:  7938, 8:  8225, 9:  8446, 10:  8358, 11:  8225, 12:  7928},
-}
+## Newave data for {ano}
+MWmed_dict = parse_sistema_dat.get_MWmed_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+print(MWmed_dict)
 
-CAdic_dict = {
-    "SE": {1: 6680, 2: 7288, 3: 6920, 4: 6244, 5: 5453, 6: 4999, 7: 5211, 8: 5584, 9: 5679, 10: 6027, 11: 6144, 12: 6121},
-    "S":  {1: 1510, 2: 1526, 3: 1489, 4: 1372, 5: 1168, 6: 1064, 7: 1130, 8: 1334, 9: 1264, 10: 1377, 11: 1521, 12: 1542},
-    "NE": {1: 1429, 2: 1457, 3: 1471, 4: 1364, 5: 1284, 6: 1233, 7: 1284, 8: 1431, 9: 1524, 10: 1517, 11: 1503, 12: 1460},
-    "N":  {1:  645, 2:  666, 3:  671, 4:  665, 5:  652, 6:  673, 7:  686, 8:  744, 9:  759, 10:  735, 11:  709, 12:  671},
-}
+CAdic_dict = parse_cadic_dat.get_CAdic_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+print(CAdic_dict)
 
-# Defina o ano explicitamente aqui, ou obtenha de outra forma se preferir.
-ano = 2026
-output_dir = f"resultados_{ano}"
+output_dir = f"carga/resultados_{ano}"
 os.makedirs(output_dir, exist_ok=True)
-
 
 def carregar_calendario(arquivo: str = "calendario_horario_2015_2030.xlsx") -> pd.DataFrame:
     """

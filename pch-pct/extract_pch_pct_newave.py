@@ -53,7 +53,6 @@ def main():
     """
     Função principal que executa a extração e exibe os resultados.
     """
-    # Configurar parser de argumentos
     parser = argparse.ArgumentParser(
         description='Extrai dados de PCH e PCT dos arquivos NEWAVE',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -75,44 +74,44 @@ Exemplos:
         '--zip',
         type=str,
         default=None,
-        help='Caminho do arquivo ZIP (padrão: deck_newave_2025_11.zip no diretório pai)'
+        help='Caminho do arquivo ZIP (padrão: deck_newave_2025_12.zip no diretório pai)'
     )
     parser.add_argument(
         '--apenas-ano-solicitado',
         action='store_true',
         help='Mostrar apenas dados do ano solicitado, sem buscar no ano seguinte'
     )
-    
+
     args = parser.parse_args()
     ano = args.ano
     usar_ano_seguinte = not args.apenas_ano_solicitado
-    
+
     # Determinar caminho do ZIP
     if args.zip:
         zip_path = Path(args.zip)
     else:
-        zip_path = Path(__file__).parent.parent / "deck_newave_2025_11.zip"
-    
+        zip_path = Path(__file__).parent.parent / "deck_newave_2025_12.zip"
+
     if not zip_path.exists():
         print(f"❌ Erro: Arquivo {zip_path} não encontrado!")
         print(f"   Diretório atual: {Path.cwd()}")
         return
-    
+
     print(f"🔍 Extraindo dados de PCH e PCT do ano {ano}...")
     if usar_ano_seguinte:
         print(f"   ℹ️  Buscando dados de {ano + 1} se faltarem meses em {ano}")
     else:
         print(f"   ℹ️  Mostrando apenas dados disponíveis em {ano}")
     print(f"📦 Arquivo ZIP: {zip_path}\n")
-    
-    # Extrair dados
+
+    # Extrair dados (agora via função reutilizável)
     print("=" * 60)
     print("📊 Extraindo PCH e PCT de SISTEMA.DAT")
     print("=" * 60)
-    
+
     pch_dict, pct_dict = parse_pch_pct_sistema_dat_from_zip(
-        str(zip_path), 
-        ano=ano, 
+        ano=ano,
+        zip_path=str(zip_path),
         usar_ano_seguinte_se_faltar=usar_ano_seguinte,
         valor_padrao_faltante="KNOWN"
     )
@@ -137,7 +136,7 @@ Exemplos:
         print(f"\n{sub}:")
         print(f"  PCH - Meses disponíveis: {meses_pch} ({len(meses_pch)} meses)")
         print(f"  PCT - Meses disponíveis: {meses_pct} ({len(meses_pct)} meses)")
-    
+
     print("\n" + "=" * 60)
     print("💡 Dica: Você pode copiar os dicionários acima para seu código")
     print("=" * 60)

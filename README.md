@@ -1,5 +1,8 @@
 # Sistema de Pré-processamento de Dados para Otimização de Curtailment
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+
 ## 📋 Descrição
 
 Este sistema foi desenvolvido como parte de um Trabalho de Conclusão de Curso (TCC) e implementa um pipeline completo de pré-processamento de dados para otimização de curtailment no Sistema Interligado Nacional (SIN).
@@ -147,7 +150,7 @@ As métricas coletadas podem ser usadas para:
 
 ## 📝 Licença
 
-Este projeto foi desenvolvido como parte de um Trabalho de Conclusão de Curso.
+Este projeto está licenciado sob a **MIT License** - veja o arquivo [LICENSE](LICENSE) para mais detalhes.
 
 ## 👨‍💻 Autor
 

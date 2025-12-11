@@ -181,17 +181,17 @@ def parse_cadic_dat_from_zip(zip_path: str, ano: int = 2025, usar_ano_seguinte_s
     return resultado
 
 
-if __name__ == "__main__":
-    # Exemplo de uso
-    zip_path = "deck_newave_2025_11.zip"
-    
-    print("📂 Extraindo e parseando C_ADIC.DAT...")
-    cadic_dict = parse_cadic_dat_from_zip(zip_path, ano=2025)
-    
-    print("\n📊 Resultado CAdic_dict:")
-    print("CAdic_dict = {")
-    for sub in ["SE", "S", "NE", "N"]:
-        valores = ", ".join([f"{mes}: {int(valor)}" for mes, valor in sorted(cadic_dict[sub].items())])
-        print(f'    "{sub}":   {{{valores}}},')
-    print("}")
+def get_CAdic_dict(zip_path: str, ano: int) -> dict:
+    """
+    Extrai e retorna o dicionário CADIC (CAdic_dict) para o ano dado a partir de um arquivo ZIP.
+
+    Args:
+        zip_path: Caminho do arquivo ZIP contendo C_ADIC.DAT
+        ano: Ano para extrair os dados
+
+    Returns:
+        Dicionário CAdic_dict no formato {subsistema: {mes: valor}}
+    """
+    cadic_dict = parse_cadic_dat_from_zip(zip_path, ano=ano)
+    return cadic_dict
 

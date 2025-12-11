@@ -256,10 +256,10 @@ def parse_pch_pct_sistema_dat_from_zip(
 
 if __name__ == "__main__":
     # Exemplo de uso
-    zip_path = "../deck_newave_2025_11.zip"
+    zip_path = "deck_newave_2025_12.zip"
     
     print("📂 Extraindo e parseando PCH e PCT de SISTEMA.DAT...")
-    pch_dict, pct_dict = parse_pch_pct_sistema_dat_from_zip(zip_path, ano=2025)
+    pch_dict, pct_dict = parse_pch_pct_sistema_dat_from_zip(zip_path, ano=2027)
     
     print("\n📊 Resultado PCH_dict:")
     print("PCH_dict = {")

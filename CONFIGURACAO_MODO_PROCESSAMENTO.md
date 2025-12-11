@@ -183,21 +183,6 @@ Execute: `python main.py`
 
 ---
 
-## 📊 Comparação de Tempos de Execução
-
-| Configuração | Criar Curvas? | Período | Tempo Estimado | Métricas |
-|--------------|---------------|---------|----------------|----------|
-| Semana Típica | ✅ Sim | 7 dias | ~10 min | Completas |
-| Semana Típica | ♻️ Não | 7 dias | ~2 min | Projeção apenas |
-| Mês Completo | ✅ Sim | ~30 dias | ~15 min | Completas |
-| Mês Completo | ♻️ Não | ~30 dias | ~3 min | Projeção apenas |
-| 90 Dias | ✅ Sim | 90 dias | ~20 min | Completas |
-| 90 Dias | ♻️ Não | 90 dias | ~4 min | Projeção apenas |
-
-**Economia de tempo com reutilização: 80-90%!**
-
----
-
 ## 🔍 Como Saber Qual Modo Está Ativo?
 
 Ao executar, você verá mensagens como:
@@ -257,48 +242,3 @@ Você pode **inspecionar, editar ou deletar** esses arquivos conforme necessári
 
 ### 🔄 **Forçar Recriação de Curvas:**
 Delete os arquivos `curva_tipica_*.csv` e execute com `REUSAR_CURVAS_TIPICAS = False`
-
----
-
-## ❓ FAQ
-
-### **P: As curvas típicas mudam frequentemente?**
-**R**: Não. São baseadas em dados históricos (2015-hoje) que só mudam uma vez por ano.
-
-### **P: Posso ter métricas completas E usar reutilização?**
-**R**: Não. Ao reutilizar curvas, as métricas de extração/limpeza não são coletadas. Para métricas completas, use `REUSAR_CURVAS_TIPICAS = False`.
-
-### **P: O que acontece se deletar os arquivos de curva típica?**
-**R**: O sistema detecta que não existem e recria automaticamente (mesmo com `REUSAR_CURVAS_TIPICAS = True`).
-
-### **P: Posso reutilizar curvas mas mudar o período (semana→mês)?**
-**R**: Sim! As curvas típicas são independentes do período de projeção.
-
-### **P: Como saber se uma curva foi reutilizada?**
-**R**: Verifique os logs (mensagem `♻️  REUTILIZANDO...`) ou nas métricas JSON (`versao_fonte: "Curva típica reutilizada"`).
-
----
-
-## 📖 Referência Rápida - 2 Configurações
-
-```python
-# EM src/data_processor.py
-
-# 1️⃣ PERÍODO (linha ~101)
-DEFAULT_CONFIG = ProcessingConfig(
-    mode=PeriodMode.SEMANA_TIPICA,  # ou PERIODO_COMPLETO
-    dias_por_mes=None               # ou número específico
-)
-
-# 2️⃣ REUTILIZAR CURVAS (linha ~126)
-REUSAR_CURVAS_TIPICAS = False  # False = criar | True = reutilizar
-```
-
----
-
-**✅ Pronto! Agora você tem controle total sobre:**
-1. **Quanto processar** (semana vs mês vs período customizado)
-2. **Como processar** (criar vs reutilizar curvas típicas)
-3. **Métricas coletadas** (completas vs apenas projeção)
-
-Isso permite **workflows flexíveis** para desenvolvimento rápido E análises completas para o TCC! 🎓

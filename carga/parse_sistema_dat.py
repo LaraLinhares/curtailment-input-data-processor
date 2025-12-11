@@ -220,17 +220,31 @@ def parse_sistema_dat_from_zip(zip_path: str, ano: int = 2025, usar_ano_seguinte
     return resultado
 
 
-if __name__ == "__main__":
-    # Exemplo de uso
-    zip_path = "deck_newave_2025_11.zip"
-    
-    print("📂 Extraindo e parseando SISTEMA.DAT...")
-    mwmed_dict = parse_sistema_dat_from_zip(zip_path, ano=2025)
-    
-    print("\n📊 Resultado MWmed_dict:")
-    print("MWmed_dict = {")
+def get_MWmed_dict(zip_path: str, ano: int) -> dict:
+    """
+    Extrai e retorna o dicionário MWmed (mercado de energia total) para o ano dado a partir de um arquivo ZIP.
+
+    Args:
+        zip_path: Caminho do arquivo ZIP contendo SISTEMA.DAT
+        ano: Ano para extrair os dados
+
+    Returns:
+        Dicionário MWmed_dict no formato {subsistema: {mes: valor}}
+    """
+    mwmed_dict = parse_sistema_dat_from_zip(zip_path, ano=ano)
+    return mwmed_dict
+
+def print_MWmed_dict(mwmed_dict: dict):
+    """
+    Imprime o dicionário MWmed_dict em formato amigável.
+
+    Args:
+        mwmed_dict: Dicionário MWmed retornado por get_MWmed_dict
+    """
+    print("MWmed = {")
     for sub in ["SE", "S", "NE", "N"]:
         valores = ", ".join([f"{mes}: {int(valor)}" for mes, valor in sorted(mwmed_dict[sub].items())])
         print(f'    "{sub}":   {{{valores}}},')
     print("}")
+
 

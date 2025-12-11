@@ -1,24 +1,32 @@
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from parse_pch_pct_sistema_dat import parse_pch_pct_sistema_dat_from_zip
 
-### Dados de MWmed do PMO NOV/2025 - SISTEMA.DAT
-MWmed_dict = {
-    "PCH": {
-        "SE":   {1:  2735, 2:  2946, 3:  2913, 4:  2630, 5:  2087, 6:  1784, 7:  1533, 8:  1373, 9:  1276, 10:  1572, 11:  1975, 12:  2397},
-        "S":   {1:   948, 2:   912, 3:   924, 4:   916, 5:  1066, 6:  1310, 7:  1335, 8:  1088, 9:  1139, 10:  1414, 11:  1145, 12:  1185},
-        "NE":   {1:    88, 2:    87, 3:    83, 4:    86, 5:    79, 6:    75, 7:    73, 8:    75, 9:    67, 10:    65, 11:    85, 12:    92},
-        "N":   {1:   162, 2:   171, 3:   171, 4:   159, 5:   136, 6:   122, 7:   111, 8:   105, 9:   104, 10:   111, 11:   134, 12:   151}
-    },
-    "PCT": {
-        "SE":   {1:   872, 2:   908, 3:  1262, 4:  2730, 5:  4115, 6:  4276, 7:  4539, 8:  4382, 9:  4166, 10:  3677, 11:  2965, 12:  1488},
-        "S":   {1:   377, 2:   361, 3:   394, 4:   456, 5:   531, 6:   528, 7:   532, 8:   527, 9:   543, 10:   511, 11:   509, 12:   370},
-        "NE":   {1:   482, 2:   459, 3:   395, 4:   371, 5:   359, 6:   354, 7:   365, 8:   362, 9:   439, 10:   485, 11:   483, 12:   486},
-        "N":   {1:   181, 2:   210, 3:   200, 4:   216, 5:   237, 6:   207, 7:   218, 8:   222, 9:   222, 10:   188, 11:   191, 12:   195}
-    }
-}
+# ============================================================================
+# CONFIGURAÇÕES - AJUSTE AQUI OS PARÂMETROS PRINCIPAIS
+# ============================================================================
+
+# Ano para extração dos dados
+ANO = 2027
+
+# Caminho do arquivo ZIP com os dados NEWAVE
+# Use caminho relativo ao diretório pai ou absoluto
+ZIP_PATH = "../deck_newave_2025_12.zip"
+
+# Se True, busca dados do ano seguinte quando faltam meses no ano principal
+USAR_ANO_SEGUINTE = False
+
+# Nome da pasta onde serão salvos os resultados
+# O ano será automaticamente adicionado ao nome
+PASTA_RESULTADOS = f"ResultadosPCH-PCT_{ANO}"
+
+# ============================================================================
+# CONSTANTES DO SISTEMA
+# ============================================================================
 
 SUBSISTEMAS = ["SE", "S", "NE", "N"]
 MESES = list(range(1, 13))
@@ -36,7 +44,15 @@ def carregar_curva_tipica(tipo_geracao: str) -> pd.DataFrame:
         DataFrame com os dados da curva típica
     """
     tipo_geracao = tipo_geracao.lower()
-    nome_arquivo = f"outputs/curva_tipica_{tipo_geracao}_mensal_pua.csv"
+    nome_arquivo = f"pch-pct/outputs/curva_tipica_{tipo_geracao}_mensal_pua.csv"
+    
+    # Verificar se arquivo existe
+    if not Path(nome_arquivo).exists():
+        raise FileNotFoundError(
+            f"Arquivo de curva típica não encontrado: {nome_arquivo}\n"
+            f"Certifique-se de que os arquivos CSV estão na pasta 'outputs/'"
+        )
+    
     return pd.read_csv(nome_arquivo, sep=';', decimal=',')
 
 
@@ -44,18 +60,20 @@ def calcular_forecast_subsistema(
     df_anual: pd.DataFrame,
     mes: int,
     subsistema: str,
-    tipo_geracao: str
+    tipo_geracao: str,
+    mwmed_dict: dict
 ) -> pd.Series:
     """
     Calcula o forecast de geração para um subsistema específico.
     
-    Fórmula: (Mean - Std) * MWmed
+    Fórmula: Mean * MWmed
     
     Args:
         df_anual: DataFrame com dados anuais da curva típica
         mes: Mês a ser processado
         subsistema: Código do subsistema ("SE", "S", "NE", "N")
         tipo_geracao: Tipo de geração ("PCH" ou "PCT")
+        mwmed_dict: Dicionário com valores de MWmed
     
     Returns:
         Series com os valores calculados do forecast
@@ -67,17 +85,18 @@ def calcular_forecast_subsistema(
     
     mean_values = df_mes[col_mean]
     # std_values = df_mes[col_std]
-    mwmed = MWmed_dict[tipo_geracao][subsistema][mes]
+    mwmed = mwmed_dict[tipo_geracao][subsistema][mes]
     
     # Usando somente a média, sem o desvio padrão
-    forecast = (mean_values) * mwmed
+    forecast = mean_values * mwmed
     
     return forecast
 
 
 def processar_mes_tipo_geracao(
     mes: int,
-    tipo_geracao: str
+    tipo_geracao: str,
+    mwmed_dict: dict
 ) -> pd.DataFrame:
     """
     Processa os dados de forecast para um mês e tipo de geração específicos.
@@ -85,6 +104,7 @@ def processar_mes_tipo_geracao(
     Args:
         mes: Mês a ser processado
         tipo_geracao: Tipo de geração ("PCH" ou "PCT")
+        mwmed_dict: Dicionário com valores de MWmed
     
     Returns:
         DataFrame com os dados de forecast calculados
@@ -101,7 +121,7 @@ def processar_mes_tipo_geracao(
     # Calcular forecast para cada subsistema
     for subsistema in SUBSISTEMAS:
         forecast_values = calcular_forecast_subsistema(
-            df_anual, mes, subsistema, tipo_geracao
+            df_anual, mes, subsistema, tipo_geracao, mwmed_dict
         )
         df_resultado[f"{tipo_geracao} - {subsistema}"] = forecast_values
     
@@ -124,24 +144,86 @@ def main():
     Função principal que processa os dados de PCH e PCT e gera arquivos CSV separados
     para cada mês e tipo de geração.
     """
-    # Criar pasta de saída se não existir
-    pasta_resultados = "ResultadosPCH-PCT_2026"
-    os.makedirs(pasta_resultados, exist_ok=True)
+    print("=" * 80)
+    print(f"🚀 GERAÇÃO DE CURVAS DE PCH E PCT - ANO {ANO}")
+    print("=" * 80)
     
+    # Verificar se arquivo ZIP existe
+    zip_path_completo = Path(__file__).parent / ZIP_PATH
+    if not zip_path_completo.exists():
+        print(f"❌ Erro: Arquivo ZIP não encontrado: {zip_path_completo}")
+        print(f"   Diretório atual: {Path.cwd()}")
+        print(f"   Configure o caminho correto na variável ZIP_PATH no topo do arquivo")
+        return
+    
+    # Extrair dados de PCH e PCT do SISTEMA.DAT
+    print(f"\n📦 Extraindo dados do arquivo: {zip_path_completo}")
+    print(f"📅 Ano de referência: {ANO}")
+    print(f"🔄 Usar ano seguinte se faltar dados: {'Sim' if USAR_ANO_SEGUINTE else 'Não'}")
+    
+    pch_dict, pct_dict = parse_pch_pct_sistema_dat_from_zip(
+        zip_path=str(zip_path_completo),
+        ano=ANO,
+        usar_ano_seguinte_se_faltar=USAR_ANO_SEGUINTE,
+        valor_padrao_faltante="KNOWN"
+    )
+    
+    # Criar dicionário MWmed
+    mwmed_dict = {
+        "PCH": pch_dict,
+        "PCT": pct_dict
+    }
+    
+    # Exibir dados extraídos
+    print("\n📊 Dados de MWmed extraídos do SISTEMA.DAT:")
+    print("-" * 80)
+    for tipo in TIPOS_GERACAO:
+        print(f"\n{tipo}:")
+        for sub in SUBSISTEMAS:
+            meses_disponiveis = sorted([m for m in mwmed_dict[tipo][sub].keys()])
+            if meses_disponiveis:
+                print(f"  {sub}: {len(meses_disponiveis)} meses - {meses_disponiveis}")
+            else:
+                print(f"  {sub}: Nenhum dado disponível")
+    
+    # Criar pasta de saída se não existir
+    print(f"\n📁 Criando pasta de resultados: {PASTA_RESULTADOS}")
+    os.makedirs(PASTA_RESULTADOS, exist_ok=True)
+    
+    # Processar e gerar arquivos CSV
+    print("\n⚙️  Processando curvas de geração...")
+    print("-" * 80)
+    
+    total_arquivos = 0
     for mes in MESES:
         for tipo_geracao in TIPOS_GERACAO:
-            # Processar dados do mês e tipo de geração
-            df_resultado = processar_mes_tipo_geracao(mes, tipo_geracao)
-            
-            # Definir nome do arquivo de saída (um arquivo por mês e tipo)
-            nome_arquivo = os.path.join(
-                pasta_resultados,
-                f"forecast_{tipo_geracao}_{mes:02d}-2026.csv"
-            )
-            
-            # Salvar CSV
-            salvar_csv(df_resultado, nome_arquivo)
-            print(f"✓ Arquivo salvo: {nome_arquivo}")
+            try:
+                # Processar dados do mês e tipo de geração
+                df_resultado = processar_mes_tipo_geracao(mes, tipo_geracao, mwmed_dict)
+                
+                # Definir nome do arquivo de saída (um arquivo por mês e tipo)
+                nome_arquivo = os.path.join(
+                    PASTA_RESULTADOS,
+                    f"forecast_{tipo_geracao}_{mes:02d}-{ANO}.csv"
+                )
+                
+                # Salvar CSV
+                salvar_csv(df_resultado, nome_arquivo)
+                print(f"✓ {tipo_geracao} - Mês {mes:02d}: {nome_arquivo}")
+                total_arquivos += 1
+                
+            except KeyError as e:
+                print(f"⚠️  {tipo_geracao} - Mês {mes:02d}: Dados não disponíveis no SISTEMA.DAT ({e})")
+            except Exception as e:
+                print(f"❌ {tipo_geracao} - Mês {mes:02d}: Erro ao processar - {e}")
+    
+    # Resumo final
+    print("\n" + "=" * 80)
+    print(f"✅ PROCESSAMENTO CONCLUÍDO")
+    print("=" * 80)
+    print(f"📊 Total de arquivos gerados: {total_arquivos}")
+    print(f"📁 Pasta de saída: {PASTA_RESULTADOS}")
+    print("=" * 80)
 
 
 if __name__ == "__main__":

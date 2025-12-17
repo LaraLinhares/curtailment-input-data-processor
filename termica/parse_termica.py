@@ -1,11 +1,47 @@
-import pandas as pd
-import zipfile
-import re
-import os
-from pathlib import Path
 import locale
+import os
+import re
+import zipfile
+from pathlib import Path
+
+import pandas as pd
 
 from get_files import GetFiles
+
+# ==============================================================================
+# CONFIGURAÇÕES - AJUSTE AQUI QUANDO NECESSÁRIO
+# ==============================================================================
+# 
+# INSTRUÇÕES DE USO:
+# 1. Ajuste o MÊS e ANO de referência abaixo
+# 2. Execute o script - ele irá:
+#    a) Baixar automaticamente o deck NEWAVE da CCEE (se ainda não existir)
+#    b) Extrair os dados do TERM.DAT, CONFT.DAT, CLAST.DAT
+#    c) Extrair o arquivo Excel GTMIN_CCEE (que vem dentro do ZIP)
+#    d) Buscar dados de CVU na API da CCEE
+# 3. O deck NEWAVE inclui TODOS os dados necessários, incluindo o Excel GTMIN
+# 
+# ONDE ENCONTRAR MANUALMENTE (se necessário):
+# - Acesse: https://www.ccee.org.br/web/guest/acervo-ccee
+# - Busque por: "Resultado do Newave - [MM]/[AAAA]"
+# - Arquivo: NW[AAAA][MM].zip (~3.6 GB)
+# - O ZIP já contém o Excel GTMIN_CCEE_[MM][AAAA].xlsx
+# 
+# ==============================================================================
+
+# Mês e Ano de referência para os dados
+MES_REFERENCIA = 12  # 1-12
+ANO_REFERENCIA = 2025  # Ano do deck (não confundir com ano dos dados de GMIN)
+
+# Ano usado para filtrar GMIN e CVU Estrutural (geralmente ano seguinte ao deck)
+ANO_DADOS_GMIN = 2029
+
+# Nomes dos arquivos (gerados automaticamente, não precisa alterar)
+NEWAVE_ZIP_FILENAME = f"NW{ANO_REFERENCIA}{str(MES_REFERENCIA).zfill(2)}.zip"
+GTMIN_EXCEL_FILENAME = f"GTMIN_CCEE_{str(MES_REFERENCIA).zfill(2)}{ANO_REFERENCIA}.xlsx"
+
+# ==============================================================================
+
 
 # Tenta configurar o locale para Português do Brasil para garantir consistência
 # Isso é uma boa prática, mas para strftime('%b') o mapeamento explícito é mais robusto
@@ -127,11 +163,16 @@ def _parse_cvu_files(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _parse_gtmin_excel(zfile: zipfile.ZipFile, excel_file_name_in_zip: str) -> pd.DataFrame:
+def _parse_gtmin_excel(zfile: zipfile.ZipFile, excel_file_name_in_zip: str, ano_dados: int = ANO_DADOS_GMIN) -> pd.DataFrame:
     """
     Função auxiliar para ler o arquivo Excel a partir de um objeto ZipFile.
-    Calcula o GMIN para 2026 como o máximo entre 'Gtmin_Agente' e 'Gtmin_Eletrico'.
+    Calcula o GMIN para o ano dos dados como o máximo entre 'Gtmin_Agente' e 'Gtmin_Eletrico'.
     Retorna um DataFrame com 'ID', 'MES_ABBR', 'GMIN'.
+    
+    Args:
+        zfile: Objeto ZipFile aberto
+        excel_file_name_in_zip: Nome do arquivo Excel dentro do ZIP
+        ano_dados: Ano para filtrar os dados de GMIN (padrão: ANO_DADOS_GMIN)
     """
     print(f"\n--- Investigando '{excel_file_name_in_zip}' dentro do ZIP: '{zfile.filename}' ---")
     
@@ -172,40 +213,39 @@ def _parse_gtmin_excel(zfile: zipfile.ZipFile, excel_file_name_in_zip: str) -> p
         print("❌ Ainda há datas inválidas na coluna 'mês' após tentativas de inferência.")
         problematic_mes_values = df_excel.loc[df_excel['MES_DT'].isnull(), 'MES'].unique()
         print(f"Valores problemáticos encontrados na coluna 'mês': {problematic_mes_values}")
-        print("As linhas contendo esses valores serão descartadas para o cálculo do GMIN de 2026.")
+        print(f"As linhas contendo esses valores serão descartadas para o cálculo do GMIN de {ano_dados}.")
         
         df_excel.dropna(subset=['MES_DT'], inplace=True)
         if df_excel.empty:
             print("Após descartar linhas com datas inválidas, o DataFrame do Excel ficou vazio.")
             return pd.DataFrame(columns=['ID', 'MES_ABBR', 'GMIN_NEW'])
 
-    df_2026 = df_excel[df_excel['MES_DT'].dt.year == 2026].copy()
+    df_ano = df_excel[df_excel['MES_DT'].dt.year == ano_dados].copy()
 
-    if df_2026.empty:
-        print("⚠️ Nenhuma linha encontrada para o ano de 2026 no arquivo Excel (após filtragem de datas).")
+    if df_ano.empty:
+        print(f"⚠️ Nenhuma linha encontrada para o ano de {ano_dados} no arquivo Excel (após filtragem de datas).")
         return pd.DataFrame(columns=['ID', 'MES_ABBR', 'GMIN_NEW'])
     
     for col in ['GTMIN_AGENTE', 'GTMIN_ELETRICO']:
-        if col in df_2026.columns:
-            df_2026[col] = df_2026[col].astype(str).str.replace(',', '.', regex=False)
+        if col in df_ano.columns:
+            df_ano[col] = df_ano[col].astype(str).str.replace(',', '.', regex=False)
             # Correção do FutureWarning: Não usar inplace=True em slices
-            df_2026[col] = pd.to_numeric(df_2026[col], errors='coerce').fillna(0)
-            # df_2026[col].fillna(0, inplace=True) # REMOVIDO
+            df_ano[col] = pd.to_numeric(df_ano[col], errors='coerce').fillna(0)
             
-    df_2026['GMIN_NEW'] = df_2026[['GTMIN_AGENTE', 'GTMIN_ELETRICO']].max(axis=1)
+    df_ano['GMIN_NEW'] = df_ano[['GTMIN_AGENTE', 'GTMIN_ELETRICO']].max(axis=1)
     
     # Mapeamento explícito para abreviações de meses em português (para evitar problemas de locale)
     month_abbr_map = {
         1: 'JAN', 2: 'FEV', 3: 'MAR', 4: 'ABR', 5: 'MAI', 6: 'JUN',
         7: 'JUL', 8: 'AGO', 9: 'SET', 10: 'OUT', 11: 'NOV', 12: 'DEZ'
     }
-    df_2026['MES_ABBR'] = df_2026['MES_DT'].dt.month.map(month_abbr_map)
+    df_ano['MES_ABBR'] = df_ano['MES_DT'].dt.month.map(month_abbr_map)
 
-    print(f"Linhas para 2026 processadas. Exemplo de GMIN_NEW calculado:")
-    print(df_2026[['ID', 'MES', 'GTMIN_AGENTE', 'GTMIN_ELETRICO', 'GMIN_NEW', 'MES_ABBR']].head())
-    print("--- Fim da Investigação de GTMIN_CCEE_112025.xlsx ---\n")
+    print(f"Linhas para {ano_dados} processadas. Exemplo de GMIN_NEW calculado:")
+    print(df_ano[['ID', 'MES', 'GTMIN_AGENTE', 'GTMIN_ELETRICO', 'GMIN_NEW', 'MES_ABBR']].head())
+    print(f"--- Fim da Investigação de {excel_file_name_in_zip} ---\n")
 
-    return df_2026[['ID', 'MES_ABBR', 'GMIN_NEW']]
+    return df_ano[['ID', 'MES_ABBR', 'GMIN_NEW']]
 
 def _get_cvu_col(df: pd.DataFrame, codigo: int, col: str, prefer_mes_col: str = 'MES_REFERENCIA', prefer_ano_col: str = 'ANO_HORIZONTE', silent: bool = True) -> float | None:
     """
@@ -275,9 +315,9 @@ def _get_cvu_from_ccee(
         cvu_final = None
         fonte = "NENHUMA_FONTE"
 
-        # 1. Tenta CVU_ESTRUTURAL (CCEE estrutural) para ANO_HORIZONTE == 2026
-        data_cvu_estrutural_2026 = data_cvu_estrutural[data_cvu_estrutural["ANO_HORIZONTE"] == 2026]
-        cvu_estr = _get_cvu_col(data_cvu_estrutural_2026, codigo, 'CVU_ESTRUTURAL', 'MES_REFERENCIA', 'ANO_HORIZONTE')
+        # 1. Tenta CVU_ESTRUTURAL (CCEE estrutural) para ANO_HORIZONTE == ANO_DADOS_GMIN
+        data_cvu_estrutural_ano = data_cvu_estrutural[data_cvu_estrutural["ANO_HORIZONTE"] == ANO_DADOS_GMIN]
+        cvu_estr = _get_cvu_col(data_cvu_estrutural_ano, codigo, 'CVU_ESTRUTURAL', 'MES_REFERENCIA', 'ANO_HORIZONTE')
         if cvu_estr is not None and not pd.isna(cvu_estr):
             cvu_final = cvu_estr
             fonte = 'CVU_ESTRUTURAL'
@@ -326,10 +366,17 @@ def _get_cvu_from_ccee(
 
     return df_result
 
-def parse_term_dat(zip_path: str, excel_file_name_in_zip: str, data_cvu_merchant: pd.DataFrame, data_cvu_estrutural: pd.DataFrame) -> pd.DataFrame:
+def parse_term_dat(zip_path: str, excel_file_name_in_zip: str, data_cvu_merchant: pd.DataFrame, data_cvu_estrutural: pd.DataFrame, ano_dados: int = ANO_DADOS_GMIN) -> pd.DataFrame:
     """
     Lê TERM.DAT, CONFT.DAT, CLAST.DAT e um Excel de GMIN, todos de dentro do ZIP.
-    Atualiza os valores de GMIN para o ano de 2026 com base no arquivo Excel.
+    Atualiza os valores de GMIN para o ano dos dados com base no arquivo Excel.
+    
+    Args:
+        zip_path: Caminho para o arquivo ZIP do NEWAVE
+        excel_file_name_in_zip: Nome do arquivo Excel de GMIN dentro do ZIP
+        data_cvu_merchant: DataFrame com dados de CVU Merchant da CCEE
+        data_cvu_estrutural: DataFrame com dados de CVU Estrutural da CCEE
+        ano_dados: Ano para filtrar dados de GMIN (padrão: ANO_DADOS_GMIN)
     """
     with zipfile.ZipFile(zip_path, "r") as z:
         # --- 1. Parsing TERM.DAT ---
@@ -395,8 +442,8 @@ def parse_term_dat(zip_path: str, excel_file_name_in_zip: str, data_cvu_merchant
         # --- 2. Parsing CONFT.DAT ---
         df_conft = _parse_conft_dat(z)
 
-        # --- 3. Parsing GTMIN_CCEE_112025.xlsx de dentro do ZIP ---
-        df_gtmin_excel = _parse_gtmin_excel(z, excel_file_name_in_zip)
+        # --- 3. Parsing do arquivo Excel de GMIN de dentro do ZIP ---
+        df_gtmin_excel = _parse_gtmin_excel(z, excel_file_name_in_zip, ano_dados)
 
         # --- 4. Parsing CLAST.DAT ---
         df_clast = _parse_clast_dat(z)
@@ -404,9 +451,9 @@ def parse_term_dat(zip_path: str, excel_file_name_in_zip: str, data_cvu_merchant
         # --- 5. Getting CVU from CCEE (com valores do CLAST como base) ---
         df_cvu_ccee = _get_cvu_from_ccee(df_term, data_cvu_merchant, data_cvu_estrutural)
 
-        # --- 6. Consolidar valores de GMIN para 2026 ---
+        # --- 6. Consolidar valores de GMIN para o ano dos dados ---
         if not df_gtmin_excel.empty:
-            print("\nConsolidando valores de GMIN do Excel para o ano de 2026...")
+            print(f"\nConsolidando valores de GMIN do Excel para o ano de {ano_dados}...")
             
             df_term_ids = set(df_term['ID'].unique())
             
@@ -418,9 +465,9 @@ def parse_term_dat(zip_path: str, excel_file_name_in_zip: str, data_cvu_merchant
                 if usina_id in df_term_ids:
                     col_name = f"GMIN_{mes_abbr}"
                     df_term.loc[df_term['ID'] == usina_id, col_name] = gmin_new_value
-            print("GMINs para 2026 atualizados a partir do Excel (apenas para usinas com POT no TERM.DAT).")
+            print(f"GMINs para {ano_dados} atualizados a partir do Excel (apenas para usinas com POT no TERM.DAT).")
         else:
-            print("Aviso: O arquivo Excel GTMIN não pôde ser parseado ou está vazio. GMINs não foram atualizados para 2026.")
+            print(f"Aviso: O arquivo Excel GTMIN não pôde ser parseado ou está vazio. GMINs não foram atualizados para {ano_dados}.")
 
         # --- 7. Merge dos DataFrames (Term, Conft, CVU, Clast) ---
         df_final = df_term.copy()
@@ -446,21 +493,39 @@ def parse_term_dat(zip_path: str, excel_file_name_in_zip: str, data_cvu_merchant
 
 
 def __main__():
-    # --- 1. Get CVU Merchant and CVU Estrutural from CCEE ---
+    print("=" * 80)
+    print(f"PROCESSAMENTO DE DADOS DE USINAS TERMELÉTRICAS")
+    print("=" * 80)
+    print(f"Deck NEWAVE: {MES_REFERENCIA:02d}/{ANO_REFERENCIA}")
+    print(f"Ano dos dados GMIN: {ANO_DADOS_GMIN}")
+    print(f"Arquivo ZIP: {NEWAVE_ZIP_FILENAME}")
+    print(f"Arquivo Excel GMIN: {GTMIN_EXCEL_FILENAME} (incluído no ZIP)")
+    print("=" * 80 + "\n")
+    
+    # --- 1. Download do deck NEWAVE da CCEE (se necessário) ---
+    print("📦 Verificando deck NEWAVE...")
     get_files = GetFiles()
+    
+    try:
+        zip_path = get_files.get_newave_deck(
+            mes=MES_REFERENCIA,
+            ano=ANO_REFERENCIA,
+            save_dir=str(Path(__file__).parent)
+        )
+        print(f"✅ Deck NEWAVE disponível: {zip_path}\n")
+    except Exception as e:
+        print(f"❌ Erro ao obter deck NEWAVE: {e}")
+        return
+    
+    # --- 2. Get CVU Merchant and CVU Estrutural from CCEE API ---
+    print("📥 Baixando dados de CVU da API CCEE...")
     data_cvu_merchant = get_files.get_ccee_merchant_files()
     data_cvu_estrutural = get_files.get_ccee_cvu_files()
 
-    # --- 2. Parse TERM.DAT, CONFT.DAT, CLAST.DAT and GTMIN_CCEE_112025.xlsx from NEWAVE ---
-    zip_path = Path(__file__).parent / "NW202511.zip"
-    excel_file_name_in_zip = "GTMIN_CCEE_112025.xlsx" # Nome do arquivo Excel DENTRO do ZIP
-    
-    if not zip_path.exists():
-        print(f"Erro: Arquivo ZIP não encontrado no caminho esperado: {zip_path}")
-        return
-
-    df = parse_term_dat(str(zip_path), excel_file_name_in_zip, data_cvu_merchant, data_cvu_estrutural) 
-    print("\nDataFrame final (com SSIS, CLAST e GMINs de 2026 atualizados do Excel):")
+    # --- 3. Parse TERM.DAT, CONFT.DAT, CLAST.DAT and GTMIN Excel from NEWAVE ---
+    print(f"\n📊 Processando arquivo: {Path(zip_path).name}")
+    df = parse_term_dat(zip_path, GTMIN_EXCEL_FILENAME, data_cvu_merchant, data_cvu_estrutural, ANO_DADOS_GMIN) 
+    print(f"\n✅ DataFrame final (com SSIS, CLAST e GMINs de {ANO_DADOS_GMIN} atualizados do Excel):")
     print(df.head())
     print(f"\nColunas do DataFrame final: {df.columns.tolist()}")
 

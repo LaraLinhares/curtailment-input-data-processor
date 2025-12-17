@@ -9,16 +9,48 @@ import parse_sistema_dat
 import parse_cadic_dat
 
 # Ano de geração da curva
-ano = 2027
+ano = 2030
 
 # Leitura do arquivo CSV de Carga PU
 df_anual = pd.read_csv("carga/outputs/curva_tipica_mensal_pu_carga.csv", sep=';', decimal=',')
 
 ## Newave data for {ano}
-MWmed_dict = parse_sistema_dat.get_MWmed_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
-print(MWmed_dict)
+# Define o ano base dos dados (último ano disponível no deck)
+ANO_BASE_DECK = 2029
 
-CAdic_dict = parse_cadic_dat.get_CAdic_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+# Determina qual ano usar para buscar dados do deck
+if ano > ANO_BASE_DECK:
+    print(f"⚠️  Ano {ano} é posterior ao último ano do deck ({ANO_BASE_DECK})")
+    print(f"    Tentando buscar dados POS ou do ano {ano}...")
+    
+    # Tenta buscar dados do ano especificado (pode incluir POS)
+    MWmed_dict = parse_sistema_dat.get_MWmed_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+    CAdic_dict = parse_cadic_dat.get_CAdic_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+    
+    # Verifica se os dados são válidos (tem valores para todos os subsistemas e meses)
+    dados_validos = True
+    for sub in ["SE", "S", "NE", "N"]:
+        if not MWmed_dict.get(sub) or not CAdic_dict.get(sub):
+            dados_validos = False
+            break
+        # Verifica se tem dados para pelo menos alguns meses
+        if all(MWmed_dict[sub].get(mes, 0) == 0 for mes in range(1, 13)):
+            dados_validos = False
+            break
+    
+    if not dados_validos:
+        print(f"    ⚠️  Dados POS não encontrados ou incompletos")
+        print(f"    ✓ Usando dados do último ano disponível ({ANO_BASE_DECK})")
+        MWmed_dict = parse_sistema_dat.get_MWmed_dict(zip_path="deck_newave_2025_12.zip", ano=ANO_BASE_DECK)
+        CAdic_dict = parse_cadic_dat.get_CAdic_dict(zip_path="deck_newave_2025_12.zip", ano=ANO_BASE_DECK)
+    else:
+        print(f"    ✓ Dados encontrados para o ano {ano} (possivelmente POS)")
+else:
+    # Ano dentro do range do deck, busca normalmente
+    MWmed_dict = parse_sistema_dat.get_MWmed_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+    CAdic_dict = parse_cadic_dat.get_CAdic_dict(zip_path="deck_newave_2025_12.zip", ano=ano)
+
+print(MWmed_dict)
 print(CAdic_dict)
 
 output_dir = f"carga/resultados_{ano}"

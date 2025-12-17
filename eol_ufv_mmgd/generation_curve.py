@@ -42,8 +42,7 @@ def get_typical_year(month: int, eol_source='EOL_V2', ufv_source='UFV', mmgd_sou
 
 
 def get_installed_capacity(basis : bool = True):
-    # basis_condition = "WHERE SCENARIO = 'BASE'"
-    basis_condition = "WHERE SCENARIO = 'Dez+'"
+    basis_condition = "WHERE SCENARIO LIKE '%30+'"
     most_recent_cap_condition = "QUALIFY ROW_NUMBER() OVER (PARTITION BY ID_SUBMARKET, ENERGY_SOURCE ORDER BY UPLOADED_AT DESC) = 1"
 
     query = f"""
@@ -76,7 +75,13 @@ class Percentile:
         query = f"ENERGY_SOURCE == '{self.source}' & ID_SUBMARKET == '{self.submarket}'"
         values_dict = {}
         for p in self.available_percentiles:
-            values_dict[p] = self.df.query(f"{query} & METRIC_NAME == 'P{p}'")["POWER"].values
+            power_values = self.df.query(f"{query} & METRIC_NAME == 'P{p}'")["POWER"].values
+            # Garantir que temos exatamente 24 valores
+            if len(power_values) < 24:
+                power_values = np.pad(power_values, (0, 24 - len(power_values)), constant_values=0)
+            elif len(power_values) > 24:
+                power_values = power_values[:24]
+            values_dict[p] = power_values
 
         # interpolar cada hora separadamente
         estimated = []
@@ -86,12 +91,13 @@ class Percentile:
             estimated.append(est)
 
         week_values = np.tile(estimated, 7)
-        return week_values
+        # Garantir que sempre retorna 168 valores
+        return week_values[:168] if len(week_values) >= 168 else np.pad(week_values, (0, 168 - len(week_values)), constant_values=0)
 
 if __name__ == "__main__":
     # Parâmetros
     boost = False
-    available_percentiles = [10, 25, 50, 75, 90]
+    available_percentiles = [50]
     meses = list(range(1, 13))  # Janeiro a Dezembro
     dias_semana = range(7)      # 0 a 6 (domingo a sábado)
     horas = range(24)           # 0 a 23
@@ -103,7 +109,7 @@ if __name__ == "__main__":
     cenarios["PERCENTIL"] = [float(x[1:]) if x else 50 for x in cenarios["PERCENTIL"]]
     cenarios = cenarios[cenarios["FONTE"].isin(["EOL", "MMGD", "UFV"])].reset_index(drop=True)
 
-    os.makedirs("resultados_2026", exist_ok=True)
+    os.makedirs("eol_ufv_mmgd/resultados_2030", exist_ok=True)
 
     for month in meses:
         # Prepara estrutura para salvar resultados do mês
@@ -133,17 +139,36 @@ if __name__ == "__main__":
                 week_values = [0.0] * 168
             elif (fonte == "EOL") and (submercado == "SE"):
                 # Aqui ainda espera 'VALOR' na coluna do DataFrame, então ajuste no Percentile se necessário
-                week_values = Percentile(fonte, "S", percentil, merged.rename(columns={"VALOR": "POWER"})).process()
-                week_values = [x * 0.004 for x in week_values]
+                week_values_temp = Percentile(fonte, "S", percentil, merged.rename(columns={"VALOR": "POWER"})).process()
+                week_values = [x * 0.004 for x in week_values_temp]
+                # Garantir que tem 168 valores
+                if len(week_values) != 168:
+                    week_values = list(week_values)[:168] if len(week_values) > 168 else list(week_values) + [0.0] * (168 - len(week_values))
             else:
                 if percentil in available_percentiles:
-                    hour_values = merged.query(
+                    hour_values_df = merged.query(
                         f"ENERGY_SOURCE == '{fonte}' & ID_SUBMARKET == '{submercado}' & METRIC_NAME == 'P{int(percentil)}'"
-                    )["VALOR"].values
+                    ).copy()
+                    
+                    # Garantir que temos exatamente 24 horas (0-23) únicas e ordenadas
+                    hour_values_df = hour_values_df.sort_values('HOUROFDAY').drop_duplicates(subset=['HOUROFDAY'], keep='first')
+                    
+                    # Se não tiver todas as 24 horas, preencher com 0
+                    if len(hour_values_df) < 24:
+                        all_hours = pd.DataFrame({'HOUROFDAY': range(24)})
+                        hour_values_df = all_hours.merge(hour_values_df, on='HOUROFDAY', how='left')
+                        hour_values_df['VALOR'] = hour_values_df['VALOR'].fillna(0)
+                    
+                    # Pegar apenas as primeiras 24 horas para garantir
+                    hour_values = hour_values_df['VALOR'].values[:24]
                     week_values = np.tile(hour_values, 7)
                 else:
                     week_values = Percentile(fonte, submercado, percentil, merged.rename(columns={"VALOR": "POWER"})).process()
 
+            # Garantir que week_values tem exatamente 168 valores (7 dias × 24 horas)
+            if len(week_values) != 168:
+                print(f"⚠️ Aviso: week_values tem {len(week_values)} valores ao invés de 168 para {fonte}/{submercado}/P{percentil}")
+            
             # Monta registros para cada hora da semana típica (para cada mês, cenário, hora da semana)
             for week_idx, value in enumerate(week_values):
                 dia_semana = week_idx // 24
@@ -160,4 +185,4 @@ if __name__ == "__main__":
 
         resultados_df = pd.DataFrame(resultados)
         # Salva um CSV para cada mês
-        resultados_df.to_csv(f"resultados_2026/forecast_ufv_mmgd_eol_{month:02d}_2026.csv", sep=";", index=False)
+        resultados_df.to_csv(f"eol_ufv_mmgd/resultados_2030/forecast_ufv_mmgd_eol_{month:02d}_2030.csv", sep=";", index=False)

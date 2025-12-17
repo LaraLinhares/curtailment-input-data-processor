@@ -54,10 +54,10 @@ def remove_acentos_dia_semana(dia):
 
 # --- Configurações de Caminhos ---
 # Diretório base onde estão todas as pastas de input
-BASE_DIR = Path("/home/laral/repos/curtailment/curtailment-inputs-process/input_processor/pacote-pred-2026v2")
+BASE_DIR = Path("data-sources")
 
 # Diretório para salvar os arquivos CSV combinados e melted
-OUTPUT_DIR = BASE_DIR / "combined_inputs_2026"
+OUTPUT_DIR = Path("created_inputs/2030/pacote-pred-2030v1")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True) # Cria o diretório se não existir
 
 # --- Funções Auxiliares ---
@@ -168,71 +168,67 @@ def _parse_clast_dat(zfile: zipfile.ZipFile) -> pd.DataFrame:
     return pd.DataFrame(clast_registros)
 
 
-def _parse_eum_data(excel_file_path: Path) -> pd.DataFrame:
+def _parse_eum_data(csv_file_path: Path) -> pd.DataFrame:
     """
-    Função auxiliar para ler o arquivo Excel de Eol/Ufv/Mmgd, extraindo APENAS
-    os dados de MMGD, UFV e EOL, organizados por INSTANTE, HORA, TIPO DIA, CATEGORIA DIA.
-    """
-    print(f"\n--- Investigando '{excel_file_path}' ---")
+    Função auxiliar para ler o arquivo CSV de Eol/Ufv/Mmgd, extraindo os dados
+    de MMGD, UFV e EOL, organizados por DIA_SEMANA e HORA.
     
-    if not excel_file_path.exists():
-        print(f"❌ Arquivo Excel '{excel_file_path}' não encontrado.")
+    Formato esperado do CSV:
+    MES;DIA_SEMANA;HORA;FONTE;SUBMERCADO;PERCENTIL;VALOR
+    """
+    print(f"\n--- Investigando '{csv_file_path}' ---")
+    
+    if not csv_file_path.exists():
+        print(f"❌ Arquivo CSV '{csv_file_path}' não encontrado.")
         return pd.DataFrame()
 
     try:
-        eum_df_full = read_and_clean_data(
-            excel_file_path,
-            'xlsx',
-            cols_to_numeric=[
-                'MMGD - SE', 'MMGD - S', 'MMGD - NE', 'MMGD - N',
-                'UFV - SE', 'UFV - S', 'UFV - NE', 'UFV - N',
-                'EOL - SE', 'EOL - S', 'EOL - NE', 'EOL - N',
-            ]
+        # Ler o CSV com separador ';' e decimal ','
+        eum_df = read_and_clean_data(
+            csv_file_path,
+            'csv',
+            separator=';',
+            cols_to_numeric=['VALOR']
         )
-        print(f"✅ Arquivo Excel '{excel_file_path.name}' lido com sucesso.")
+        print(f"✅ Arquivo CSV '{csv_file_path.name}' lido com sucesso.")
     except Exception as e:
-        print(f"❌ Erro ao ler o arquivo Excel '{excel_file_path.name}': {e}")
+        print(f"❌ Erro ao ler o arquivo CSV '{csv_file_path.name}': {e}")
         return pd.DataFrame()
 
-    # Definir as colunas de MMGD, UFV e EOL que queremos usar do Excel EUM
-    eum_desired_data_cols = [
-        'MMGD - SE', 'MMGD - S', 'MMGD - NE', 'MMGD - N',
-        'UFV - SE', 'UFV - S', 'UFV - NE', 'UFV - N',
-        'EOL - SE', 'EOL - S', 'EOL - NE', 'EOL - N' 
-    ]
-    eum_key_cols = ['INSTANTE', 'TIPO DIA', 'CATEGORIA DIA', 'HORA']
+    # Verificar colunas necessárias
+    required_cols = ['MES', 'DIA_SEMANA', 'HORA', 'FONTE', 'SUBMERCADO', 'VALOR']
+    missing_cols = [col for col in required_cols if col not in eum_df.columns]
+    if missing_cols:
+        print(f"❌ Colunas obrigatórias não encontradas no CSV: {missing_cols}")
+        return pd.DataFrame()
+
+    # Filtrar apenas PERCENTIL 50.0 (mediana) se a coluna existir
+    if 'PERCENTIL' in eum_df.columns:
+        eum_df = eum_df[eum_df['PERCENTIL'] == 50.0].copy()
     
-    # Filtrar o DataFrame para conter apenas as colunas desejadas (chaves + dados)
-    # Garante que só pegamos colunas que realmente existem
-    eum_df = eum_df_full[[col for col in (eum_key_cols + eum_desired_data_cols) if col in eum_df_full.columns]].copy()
-
-    # Renomear colunas para padronização e evitar conflitos
-    eum_df = eum_df.rename(columns={
-        'MMGD - SE': 'MMGD_SE', 'MMGD - S': 'MMGD_S', 'MMGD - NE': 'MMGD_NE', 'MMGD - N': 'MMGD_N',
-        'UFV - SE': 'UFV_SE', 'UFV - S': 'UFV_S', 'UFV - NE': 'UFV_NE', 'UFV - N': 'UFV_N',
-        'EOL - SE': 'EOL_SE', 'EOL - S': 'EOL_S', 'EOL - NE': 'EOL_NE', 'EOL - N': 'EOL_N'
-    })
-
-    # Criar uma coluna 'Hora_EUM_Key' para alinhamento com carga_df.Hora (0-23)
-    if 'HORA' in eum_df.columns:
-        eum_df['Hora_EUM_Key'] = eum_df['HORA'] - 1
-        if not eum_df['Hora_EUM_Key'].between(0, 23).all():
-            print(f"⚠️ Atenção: Coluna 'HORA' no Excel EUM contém valores que, após ajuste para 0-23, estão fora do esperado.")
-    else:
-        print("❌ Coluna 'HORA' não encontrada no Excel EUM. Incapaz de criar chave de mesclagem.")
-        return pd.DataFrame()
-
-    if not all(col in eum_df.columns for col in ['INSTANTE', 'TIPO DIA', 'CATEGORIA DIA']):
-        print("❌ Colunas 'INSTANTE', 'TIPO DIA' ou 'CATEGORIA DIA' não encontradas no Excel EUM. Incapaz de criar chave de mesclagem.")
-        return pd.DataFrame()
-
-    print(f"--- Fim da Investigação de '{excel_file_path.name}' ---\n")
-
-    # Retorna as colunas de chave e as colunas de dados de EUM (apenas MMGD, UFV, EOL)
-    eum_final_cols = ['INSTANTE', 'TIPO DIA', 'CATEGORIA DIA', 'Hora_EUM_Key'] + [
-        col for col in eum_df.columns if col.startswith(('MMGD_', 'UFV_', 'EOL_'))
-    ]
-    return eum_df[eum_final_cols]
+    # Filtrar apenas as fontes que nos interessam
+    eum_df = eum_df[eum_df['FONTE'].isin(['EOL', 'UFV', 'MMGD'])].copy()
+    
+    # Criar uma coluna combinada FONTE_SUBMERCADO para o pivot
+    eum_df['FONTE_SUBMERCADO'] = eum_df['FONTE'] + '_' + eum_df['SUBMERCADO']
+    
+    # Fazer pivot para transformar em formato wide (uma coluna por FONTE_SUBMERCADO)
+    # Usando DIA_SEMANA e HORA como índices
+    eum_pivot = eum_df.pivot_table(
+        index=['DIA_SEMANA', 'HORA'],
+        columns='FONTE_SUBMERCADO',
+        values='VALOR',
+        aggfunc='first'  # Pega o primeiro valor se houver duplicatas
+    ).reset_index()
+    
+    # Renomear DIA_SEMANA para DIA_SEMANA_NUM para consistência
+    eum_pivot = eum_pivot.rename(columns={'DIA_SEMANA': 'DIA_SEMANA_NUM'})
+    
+    print(f"✅ Dados pivotados: {len(eum_pivot)} linhas, {len(eum_pivot.columns)} colunas")
+    print(f"   Colunas disponíveis: {sorted([col for col in eum_pivot.columns if '_' in str(col)])}")
+    print(f"--- Fim da Investigação de '{csv_file_path.name}' ---\n")
+    
+    return eum_pivot
 
 
 def melt_combined_dataframe(df_combined: pd.DataFrame, month_num: int, year_str: str) -> pd.DataFrame:
@@ -302,7 +298,7 @@ def melt_combined_dataframe(df_combined: pd.DataFrame, month_num: int, year_str:
 
     # Criar a coluna ID_INPUT
     month_abbr = get_month_abbr(month_num)
-    df_melted['ID_INPUT'] = f"PRED-{month_abbr}-{year_str}" # Ex: "PRED-JAN-2026"
+    df_melted['ID_INPUT'] = f"PRED-{month_abbr}-{year_str}" # Ex: "PRED-JAN-2030"
 
     # Renomear as colunas para o formato final desejado
     df_melted = df_melted.rename(columns={
@@ -339,11 +335,11 @@ def melt_combined_dataframe(df_combined: pd.DataFrame, month_num: int, year_str:
 
 for month_num in range(1, 13):
     month_str = f"{month_num:02d}"
-    year_str = "2026"
+    year_str = "2030"
     print(f"\n--- Processando Mês: {month_str}/{year_str} ---")
 
     # 1. Carregar Carga (DataFrame Base)
-    carga_file = BASE_DIR / f"resultadosCarga_{year_str}/forecast_carga_{month_str}-{year_str}.csv"
+    carga_file = BASE_DIR / f"carga_{year_str}/forecast_carga_{month_str}-{year_str}.csv"
     if not carga_file.exists():
         print(f"❌ Arquivo de Carga não encontrado: {carga_file}. Pulando este mês.")
         continue
@@ -376,7 +372,7 @@ for month_num in range(1, 13):
         carga_df['Tipo_Dia_Num'] = 0 # Placeholder, ajuste se houver uma lógica específica
 
     # 2. Carregar PCH (do CSV individual)
-    pch_file = BASE_DIR / f"resultadosPchPct_{year_str}/forecast_PCH_{month_str}-{year_str}.csv"
+    pch_file = BASE_DIR / f"pch_pct_{year_str}/forecast_PCH_{month_str}-{year_str}.csv"
     if pch_file.exists():
         pch_df = read_and_clean_data(
             pch_file,
@@ -401,7 +397,7 @@ for month_num in range(1, 13):
         for col in ['PCH_SE', 'PCH_S', 'PCH_NE', 'PCH_N']: carga_df[col] = np.nan
 
     # 3. Carregar PCT (do CSV individual)
-    pct_file = BASE_DIR / f"resultadosPchPct_{year_str}/forecast_PCT_{month_str}-{year_str}.csv"
+    pct_file = BASE_DIR / f"pch_pct_{year_str}/forecast_PCT_{month_str}-{year_str}.csv"
     if pct_file.exists():
         pct_df = read_and_clean_data(
             pct_file,
@@ -425,8 +421,8 @@ for month_num in range(1, 13):
         print(f"⚠️ Arquivo PCT não encontrado: {pct_file}. PCT data não será incluída.")
         for col in ['PCT_SE', 'PCT_S', 'PCT_NE', 'PCT_N']: carga_df[col] = np.nan
 
-    # 4. Carregar Eol/Ufv/Mmgd (do Excel - APENAS EOL/UFV/MMGD)
-    eum_file = BASE_DIR / f"resultadosEolUfvMmgd_{year_str}/curtailment_input_{month_str}{year_str}.xlsx"
+    # 4. Carregar Eol/Ufv/Mmgd (do CSV)
+    eum_file = BASE_DIR / f"ufv_mmgd_eol_{year_str}/forecast_ufv_mmgd_eol_{month_str}_{year_str}.csv"
     if eum_file.exists():
         eum_df = _parse_eum_data(eum_file)
         
@@ -434,20 +430,33 @@ for month_num in range(1, 13):
             # Colunas de dados de EUM para merge
             eum_merge_data_cols = [col for col in eum_df.columns if col.startswith(('MMGD_', 'UFV_', 'EOL_'))]
 
-            # Merge com base na Hora ajustada do EUM e Dia da Semana da Carga
-            carga_df = pd.merge(carga_df, eum_df[['INSTANTE', 'Hora_EUM_Key'] + eum_merge_data_cols], 
-                                left_on=['DiaDaSemana_PT', 'Hora'], 
-                                right_on=['INSTANTE', 'Hora_EUM_Key'], 
-                                how='left', suffixes=('', '_EUM'))
+            # Criar coluna DIA_SEMANA_NUM no carga_df para fazer merge
+            # DIA_SEMANA_NUM: 0=SEGUNDA, 1=TERÇA, ..., 6=DOMINGO
+            if 'DiaDaSemana_PT' in carga_df.columns:
+                carga_df['DIA_SEMANA_NUM_temp'] = carga_df['DiaDaSemana_PT'].map({
+                    'SEGUNDA': 0, 'TERÇA': 1, 'QUARTA': 2, 'QUINTA': 3,
+                    'SEXTA': 4, 'SÁBADO': 5, 'DOMINGO': 6
+                })
+            
+            # Merge com base em DIA_SEMANA_NUM e HORA
+            carga_df = pd.merge(
+                carga_df, 
+                eum_df[['DIA_SEMANA_NUM', 'HORA'] + eum_merge_data_cols], 
+                left_on=['DIA_SEMANA_NUM_temp', 'Hora'], 
+                right_on=['DIA_SEMANA_NUM', 'HORA'], 
+                how='left', 
+                suffixes=('', '_EUM')
+            )
             
             # Remove as colunas auxiliares do merge
-            carga_df.drop(columns=['INSTANTE', 'Hora_EUM_Key'], inplace=True, errors='ignore')
+            carga_df.drop(columns=['DIA_SEMANA_NUM_temp', 'DIA_SEMANA_NUM', 'HORA'], inplace=True, errors='ignore')
             
-            # Verifica e avisa sobre NaNs na hora 23 se aplicável
-            if (carga_df['Hora'] == 23).any() and carga_df.loc[carga_df['Hora'] == 23, 'MMGD_SE'].isnull().all():
-                print(f"⚠️ Aviso: Valores Eol/Ufv/Mmgd para a hora 23:00 (carga_df.Hora=23) são NaN pois não há correspondência nos dados de EUM (HORA 1-23).")
+            # Verifica se há valores faltando
+            missing_count = carga_df[eum_merge_data_cols].isnull().sum().sum()
+            if missing_count > 0:
+                print(f"⚠️ Aviso: {missing_count} valores faltando após merge com dados de EOL/UFV/MMGD.")
         else:
-            print(f"⚠️ Dados de Eol/Ufv/Mmgd do Excel estão vazios ou não foram parseados. Colunas serão NaN.")
+            print(f"⚠️ Dados de Eol/Ufv/Mmgd do CSV estão vazios ou não foram parseados. Colunas serão NaN.")
             for prefix in ['MMGD', 'UFV', 'EOL']:
                 for suffix in ['SE', 'S', 'NE', 'N']: 
                     carga_df[f"{prefix}_{suffix}"] = np.nan

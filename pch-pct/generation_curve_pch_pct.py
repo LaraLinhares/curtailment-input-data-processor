@@ -11,7 +11,7 @@ from parse_pch_pct_sistema_dat import parse_pch_pct_sistema_dat_from_zip
 # ============================================================================
 
 # Ano para extração dos dados
-ANO = 2027
+ANO = 2029
 
 # Caminho do arquivo ZIP com os dados NEWAVE
 # Use caminho relativo ao diretório pai ou absoluto
